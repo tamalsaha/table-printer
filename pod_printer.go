@@ -2,29 +2,27 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 
-	api "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/duration"
 )
 
-var (
-	podSuccessConditions = []metav1.TableRowCondition{{Type: metav1.RowCompleted, Status: metav1.ConditionTrue, Reason: string(api.PodSucceeded), Message: "The pod has completed successfully."}}
-	podFailedConditions  = []metav1.TableRowCondition{{Type: metav1.RowCompleted, Status: metav1.ConditionTrue, Reason: string(api.PodFailed), Message: "The pod failed."}}
-)
+func init() {
+	Register(PodPrinter{})
+}
 
-func printPodList(podList *api.PodList, options GenerateOptions) ([]metav1.TableRow, error) {
-	rows := make([]metav1.TableRow, 0, len(podList.Items))
-	for i := range podList.Items {
-		r, err := printPod(&podList.Items[i], options)
-		if err != nil {
-			return nil, err
-		}
-		rows = append(rows, r...)
-	}
-	return rows, nil
+type PodPrinter struct{}
+
+var _ ColumnConverter = PodPrinter{}
+
+func (_ PodPrinter) GVK() schema.GroupVersionKind {
+	return core.SchemeGroupVersion.WithKind("Pod")
 }
 
 /*
@@ -32,8 +30,25 @@ func printPodList(podList *api.PodList, options GenerateOptions) ([]metav1.Table
   - name: Restarts
   - name: IP
   - name: Readiness Gates
+
+"name": "Name",
+"name": "Ready",
+"name": "Status",
+"name": "Restarts",
+"name": "Age",
+"name": "IP",
+"name": "Node",
+"name": "Nominated Node",
+"name": "Readiness Gates",
+
 */
-func printPod(pod *api.Pod, options GenerateOptions) ([]metav1.TableRow, error) {
+
+func (_ PodPrinter) Convert(obj runtime.Object) (map[string]interface{}, error) {
+	pod, ok := obj.(*core.Pod)
+	if !ok {
+		return nil, fmt.Errorf("expected Pod, received %v", reflect.TypeOf(obj))
+	}
+
 	restarts := 0
 	totalContainers := len(pod.Spec.Containers)
 	readyContainers := 0
@@ -43,16 +58,7 @@ func printPod(pod *api.Pod, options GenerateOptions) ([]metav1.TableRow, error) 
 		reason = pod.Status.Reason
 	}
 
-	row := metav1.TableRow{
-		Object: runtime.RawExtension{Object: pod},
-	}
-
-	switch pod.Status.Phase {
-	case api.PodSucceeded:
-		row.Conditions = podSuccessConditions
-	case api.PodFailed:
-		row.Conditions = podFailedConditions
-	}
+	row := map[string]interface{}{}
 
 	initializing := false
 	for i := range pod.Status.InitContainerStatuses {
@@ -121,50 +127,70 @@ func printPod(pod *api.Pod, options GenerateOptions) ([]metav1.TableRow, error) 
 		reason = "Terminating"
 	}
 
-	row.Cells = append(row.Cells, pod.Name, fmt.Sprintf("%d/%d", readyContainers, totalContainers), reason, int64(restarts), translateTimestampSince(pod.CreationTimestamp))
-	if options.Wide {
-		nodeName := pod.Spec.NodeName
-		nominatedNodeName := pod.Status.NominatedNodeName
-		podIP := ""
-		if len(pod.Status.PodIPs) > 0 {
-			podIP = pod.Status.PodIPs[0].IP
-		}
+	/*
+		"name": "Name",
+		"name": "Ready",
+		"name": "Status",
+		"name": "Restarts",
+		"name": "Age",
+	*/
+	row["Name"] = pod.Name
+	row["Ready"] = fmt.Sprintf("%d/%d", readyContainers, totalContainers)
+	row["Status"] = reason
+	row["Restarts"] = int64(restarts)
+	row["Age"] = translateTimestampSince(pod.CreationTimestamp)
 
-		if podIP == "" {
-			podIP = "<none>"
-		}
-		if nodeName == "" {
-			nodeName = "<none>"
-		}
-		if nominatedNodeName == "" {
-			nominatedNodeName = "<none>"
-		}
-
-		readinessGates := "<none>"
-		if len(pod.Spec.ReadinessGates) > 0 {
-			trueConditions := 0
-			for _, readinessGate := range pod.Spec.ReadinessGates {
-				conditionType := readinessGate.ConditionType
-				for _, condition := range pod.Status.Conditions {
-					if condition.Type == conditionType {
-						if condition.Status == api.ConditionTrue {
-							trueConditions++
-						}
-						break
-					}
-				}
-			}
-			readinessGates = fmt.Sprintf("%d/%d", trueConditions, len(pod.Spec.ReadinessGates))
-		}
-		row.Cells = append(row.Cells, podIP, nodeName, nominatedNodeName, readinessGates)
+	nodeName := pod.Spec.NodeName
+	nominatedNodeName := pod.Status.NominatedNodeName
+	podIP := ""
+	if len(pod.Status.PodIPs) > 0 {
+		podIP = pod.Status.PodIPs[0].IP
 	}
 
-	return []metav1.TableRow{row}, nil
+	if podIP == "" {
+		podIP = "<none>"
+	}
+	if nodeName == "" {
+		nodeName = "<none>"
+	}
+	if nominatedNodeName == "" {
+		nominatedNodeName = "<none>"
+	}
+
+	readinessGates := "<none>"
+	if len(pod.Spec.ReadinessGates) > 0 {
+		trueConditions := 0
+		for _, readinessGate := range pod.Spec.ReadinessGates {
+			conditionType := readinessGate.ConditionType
+			for _, condition := range pod.Status.Conditions {
+				if condition.Type == conditionType {
+					if condition.Status == core.ConditionTrue {
+						trueConditions++
+					}
+					break
+				}
+			}
+		}
+		readinessGates = fmt.Sprintf("%d/%d", trueConditions, len(pod.Spec.ReadinessGates))
+	}
+
+	/*
+		"name": "IP",
+		"name": "Node",
+		"name": "Nominated Node",
+		"name": "Readiness Gates",
+	*/
+	row["IP"] = podIP
+	row["Node"] = nodeName
+	row["Nominated Node"] = nominatedNodeName
+	row["Readiness Gates"] = readinessGates
+
+	return row, nil
 }
 
-func hasPodReadyCondition(conditions []api.PodCondition) bool {
+func hasPodReadyCondition(conditions []core.PodCondition) bool {
 	for _, condition := range conditions {
-		if condition.Type == api.PodReady && condition.Status == api.ConditionTrue {
+		if condition.Type == core.PodReady && condition.Status == core.ConditionTrue {
 			return true
 		}
 	}
