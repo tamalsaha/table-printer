@@ -27,6 +27,12 @@ func printPodList(podList *api.PodList, options GenerateOptions) ([]metav1.Table
 	return rows, nil
 }
 
+/*
+  - name: Ready
+  - name: Restarts
+  - name: IP
+  - name: Readiness Gates
+*/
 func printPod(pod *api.Pod, options GenerateOptions) ([]metav1.TableRow, error) {
 	restarts := 0
 	totalContainers := len(pod.Spec.Containers)
