@@ -1,32 +1,32 @@
-package main
+package printers
 
 import (
 	"fmt"
 	"reflect"
 
 	"gomodules.xyz/pointer"
-	apps "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func init() {
-	Register(ReplicaSetPrinter{})
+	Register(ReplicationControllerPrinter{})
 }
 
-// ref: https://github.com/kubernetes/kubernetes/blob/v1.21.0/pkg/printers/internalversion/printers.go#L135-L146
+// ref: https://github.com/kubernetes/kubernetes/blob/v1.21.0/pkg/printers/internalversion/printers.go#L122-L133
 
-type ReplicaSetPrinter struct{}
+type ReplicationControllerPrinter struct{}
 
-var _ ColumnConverter = ReplicaSetPrinter{}
+var _ ColumnConverter = ReplicationControllerPrinter{}
 
-func (_ ReplicaSetPrinter) GVK() schema.GroupVersionKind {
-	return apps.SchemeGroupVersion.WithKind("ReplicaSet")
+func (_ ReplicationControllerPrinter) GVK() schema.GroupVersionKind {
+	return core.SchemeGroupVersion.WithKind("ReplicationController")
 }
 
-func (p ReplicaSetPrinter) Convert(o runtime.Object) (map[string]interface{}, error) {
-	obj, ok := o.(*apps.ReplicaSet)
+func (p ReplicationControllerPrinter) Convert(o runtime.Object) (map[string]interface{}, error) {
+	obj, ok := o.(*core.ReplicationController)
 	if !ok {
 		return nil, fmt.Errorf("expected %v, received %v", p.GVK().Kind, reflect.TypeOf(o))
 	}
@@ -46,7 +46,7 @@ func (p ReplicaSetPrinter) Convert(o runtime.Object) (map[string]interface{}, er
 	names, images := layoutContainerCells(obj.Spec.Template.Spec.Containers)
 	row["Containers"] = names
 	row["Images"] = images
-	row["Selector"] = metav1.FormatLabelSelector(obj.Spec.Selector)
+	row["Selector"] = labels.FormatLabels(obj.Spec.Selector)
 
 	return row, nil
 }
