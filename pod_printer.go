@@ -3,19 +3,18 @@ package main
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	core "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/duration"
 )
 
 func init() {
 	Register(PodPrinter{})
 }
+
+// ref: https://github.com/kubernetes/kubernetes/blob/v1.21.0/pkg/printers/internalversion/printers.go#L89-L101
 
 type PodPrinter struct{}
 
@@ -26,27 +25,20 @@ func (_ PodPrinter) GVK() schema.GroupVersionKind {
 }
 
 /*
-  - name: Ready
-  - name: Restarts
-  - name: IP
-  - name: Readiness Gates
-
-"name": "Name",
-"name": "Ready",
-"name": "Status",
-"name": "Restarts",
-"name": "Age",
-"name": "IP",
-"name": "Node",
-"name": "Nominated Node",
-"name": "Readiness Gates",
-
+	"name": "Name",
+	"name": "Ready",
+	"name": "Status",
+	"name": "Restarts",
+	"name": "Age",
+	"name": "IP",
+	"name": "Node",
+	"name": "Nominated Node",
+	"name": "Readiness Gates",
 */
-
-func (_ PodPrinter) Convert(obj runtime.Object) (map[string]interface{}, error) {
-	pod, ok := obj.(*core.Pod)
+func (p PodPrinter) Convert(o runtime.Object) (map[string]interface{}, error) {
+	pod, ok := o.(*core.Pod)
 	if !ok {
-		return nil, fmt.Errorf("expected Pod, received %v", reflect.TypeOf(obj))
+		return nil, fmt.Errorf("expected %v, received %v", p.GVK().Kind, reflect.TypeOf(o))
 	}
 
 	restarts := 0
@@ -195,14 +187,4 @@ func hasPodReadyCondition(conditions []core.PodCondition) bool {
 		}
 	}
 	return false
-}
-
-// translateTimestampSince returns the elapsed time since timestamp in
-// human-readable approximation.
-func translateTimestampSince(timestamp metav1.Time) string {
-	if timestamp.IsZero() {
-		return "<unknown>"
-	}
-
-	return duration.HumanDuration(time.Since(timestamp.Time))
 }

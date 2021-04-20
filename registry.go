@@ -18,11 +18,11 @@ func Register(c ColumnConverter) {
 	printers[c.GVK()] = c
 }
 
-func Convert(obj runtime.Object) (map[string]interface{}, error) {
-	gvk := obj.GetObjectKind().GroupVersionKind()
+func Convert(o runtime.Object) (map[string]interface{}, error) {
+	gvk := o.GetObjectKind().GroupVersionKind()
 	c, ok := printers[gvk]
 	if !ok {
 		return nil, fmt.Errorf("no column converter registered for %+v", gvk)
 	}
-	return c.Convert(obj)
+	return c.Convert(o)
 }
